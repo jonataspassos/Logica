@@ -1,0 +1,353 @@
+<style>
+    .dictionary{
+        width:800px;
+        /*display: flex;*/
+    }
+    .content{
+        display: flex;
+        flex-direction: row;
+        padding: 20px;
+        width:100%;
+    };
+    .sub{
+        display: flex;
+        padding: 40px;
+        width:25%;
+    };
+</style>
+<body>
+<script src="../Repository/d3.v5.min.js"></script>
+<script>
+    Array.removeRepetitions = function(vector){
+        return vector.filter(function(este, i) {
+            return vector.indexOf(este) == i;
+        });
+    }
+</script>
+<script>
+var dictionary={
+        vfalse:"0",
+        vtrue:"1",
+        //value:""+this.vfalse+this.vtrue,// 0 - FALSE; 1 - TRUE;
+        verdict:"a-zA-Z",
+        connective:{
+            and:"\\^&",
+            or:"|",
+            implication:">",
+            consequency:"<",
+            bimplication:"=",
+            negation:"¬!",
+            //binary:""+this.and+this.or+this.implication+this.bimplication, // & - AND; | - OR; > - IMPLICATION; = - EQUIVALENCE
+            //unary:this.negation,//  - NOT;
+            all:""+this.binary+this.unary,
+        },
+        punctuation:{
+            open:"\\(",
+            close:"\\)",
+        }
+}
+dictionary.value = dictionary.vfalse+dictionary.vtrue;
+dictionary.connective.binary = dictionary.connective.and+dictionary.connective.or+dictionary.connective.implication+dictionary.connective.consequency+dictionary.connective.bimplication;
+dictionary.connective.unary = dictionary.connective.negation;
+var createRegex = function(str){
+    return new RegExp("["+str+"]");
+}
+var dictionaryRegex = {
+    vfalse:createRegex(dictionary.vfalse),
+    vtrue:createRegex(dictionary.vtrue),
+    value:createRegex(dictionary.value),
+    verdict:createRegex(dictionary.verdict),
+    connective:{
+        and:createRegex(dictionary.connective.and),
+        or:createRegex(dictionary.connective.or),
+        implication:createRegex(dictionary.connective.implication),
+        consequency:createRegex(dictionary.connective.consequency),
+        bimplication:createRegex(dictionary.connective.bimplication),
+        negation:createRegex(dictionary.connective.negation),
+        binary:createRegex(dictionary.connective.binary),
+        unary:createRegex(dictionary.connective.unary),
+        all:createRegex(dictionary.connective.all),
+    },
+    punctuation:{
+        open:createRegex(dictionary.punctuation.open),
+        close:createRegex(dictionary.punctuation.close),
+        all:new RegExp("\(?<="+dictionary.punctuation.open+"\)[^"+dictionary.punctuation.open+
+            dictionary.punctuation.close+"]+?\(?="+dictionary.punctuation.close+"\)","g"),// tudo entre ( )
+    }
+}
+var body = d3.select("body");
+var div_dictionary = body.append("div").attr("id","dictionary").attr("class","dictionary");
+var div_title = div_dictionary.append("div").attr("class","tittle");
+var div_content = div_dictionary.append("div").attr("class","content");
+
+div_title.append("h1").attr("id","tittle").text("Dictionary");
+
+var div_value = div_content.append("div").attr("class","sub");
+div_value.append("h3").text("Valor:");
+div_value.append("p").text("Verdadeiro: "+dictionary.vtrue);
+div_value.append("p").text("Falso: "+dictionary.vfalse);
+
+//var div_verdicts = div_content.append("div").attr("class","sub");
+div_value.append("h3").text("Sentenças:");
+div_value.append("p").text(dictionary.verdict);
+
+var div_punctuatcions = div_content.append("div").attr("class","sub");
+div_punctuatcions.append("h3").text("Pontuação:");
+div_punctuatcions.append("p").text("Começo: "+dictionary.punctuation.open);
+div_punctuatcions.append("p").text("Fim: "+dictionary.punctuation.close);
+
+var div_conectives = div_content.append("div").attr("class","sub");
+div_conectives.append("h3").text("Conectivos:");
+div_conectives.append("p").text("Negação: "+dictionary.connective.negation);
+div_conectives.append("p").text("Conjunção: "+dictionary.connective.and);
+div_conectives.append("p").text("Disjunção: "+dictionary.connective.or);
+div_conectives.append("p").text("Implication: "+dictionary.connective.implication);
+//div_conectives.append("p").text("Consequency: "+dictionary.connective.consequency);
+div_conectives.append("p").text("Bimplication: "+dictionary.connective.bimplication);
+
+var btn = body.append("button").attr("onCLick","btnFunction()").text("Digitar Expressão Lógica");
+
+
+var isSentence = function(s){
+    //value valid
+    s = s.trim();
+    s = s.replace(/[\s\\t]/g,"");
+    if(s=="" || s.search(new RegExp("[^"+
+            dictionary.value+
+            dictionary.verdict+
+            dictionary.connective.binary+
+            dictionary.connective.unary+
+            dictionary.punctuation.open+
+            dictionary.punctuation.close+
+        "]"))!=-1)
+        return false;
+    if(s.replace(new RegExp("["+dictionary.value+"]"),"")=="")
+        return true;
+    //verdict valid
+    if(s.replace(new RegExp("["+dictionary.verdict+"]"),"")=="")
+        return true;
+    //unary valid
+    if(s.search("["+dictionary.connective.unary+"]")==0)
+        return isSentence(s.substr(1,s.length-1));
+    //punctuaction valid
+    var temp = true;
+    while(s.search(dictionaryRegex.punctuation.all)!=-1){
+        var puncts = s.match(dictionaryRegex.punctuation.all)
+        for(var i=0;i<puncts.length;i++){
+            temp = temp && isSentence(puncts[i]);
+            s = s.replace("\("+puncts[i]+"\)","a");
+        }
+    }
+    if(s=="")
+        return temp;
+    var v = s.split(new RegExp("["+dictionary.connective.binary+"]"));
+    for(var i=0;i<v.length;i++){
+        var l = v[i].search("["+dictionary.connective.unary+"]")
+        if(l!=-1 && l!=0)
+            return false;
+        if(l==-1 && v[i].length!=1)
+            return false;
+        temp = temp && isSentence(v[i]);
+    }
+
+    return temp;
+}
+
+var isOperand = function(o){
+    return o.replace(dictionaryRegex.verdict,"")=="";
+}
+var isValue = function(o){
+    return o.replace(dictionaryRegex.value,"")=="";
+}
+
+var operation = function(c){
+    if(c.replace(dictionaryRegex.connective.and,"")=="")
+        c = "and";
+    else if(c.replace(dictionaryRegex.connective.or,"")=="")
+        c = "or";
+    else if(c.replace(dictionaryRegex.connective.implication,"")=="")
+        c = "implication";
+    else if(c.replace(dictionaryRegex.connective.consequency,"")=="")
+        c = "consequency";
+    else if(c.replace(dictionaryRegex.connective.bimplication,"")=="")
+        c = "bimplication";
+    else if(c.replace(dictionaryRegex.connective.negation,"")=="")
+        c = "negation";
+    else if(c.replace(dictionaryRegex.punctuation.open,"")=="")
+        c = "open";
+    else if(c.replace(dictionaryRegex.punctuation.close,"")=="")
+        c = "close";
+    else   
+        c = "nothing";
+    return c;
+}
+
+var apply = function(c,op1,op2){
+    c = operation(c);
+    switch(c){
+        case "and" : return op1 && op2;
+        case "or": return op1 || op2;
+        case "implication": return !op1 || op2;
+        case "consequency": return op1 || !op2;
+        case "bimplication": return !(op1 ^ op2);
+        case "negation": return !op1;
+        default: return false;
+    }
+}
+
+var takeValue = function(truthTable,formul,interpretation){
+    for(var i=0;i<truthTable.length;i++){
+        if(formul == truthTable[i].formul)
+            break;
+    }
+    if(i==truthTable.length)
+        return undefined;
+    return truthTable[i].value[interpretation];
+}
+
+var check = function(e,truthTable,interpretation){
+    var symbol;
+    var i=0;
+    var pilha_operandos = [];
+    while(symbol=e[i++]){
+        if(isOperand(symbol))
+            pilha_operandos.push(takeValue(truthTable,symbol,interpretation));
+        else if(isValue(symbol)){
+            pilha_operandos.push((symbol.replace(dictionaryRegex.vfalse,"")=="")?false:true);
+        }
+        else if(symbol.replace(dictionaryRegex.connective.unary,"")==""){
+            var op1 = pilha_operandos.pop();
+            pilha_operandos.push(apply(symbol,op1));
+        }else{
+            var op2=pilha_operandos.pop(),
+                op1 = pilha_operandos.pop();
+            pilha_operandos.push(apply(symbol,op1,op2));
+        }
+    }
+    return pilha_operandos.pop();
+}
+
+var prcd = function(op1,op2){
+    op1 = operation(op1);
+    op2 = operation(op2);
+    if(op2 == "open")
+        return op1=="close";
+    if(op2 == "close")
+        return op1!="open";
+    if(op1 == "open")
+        return op2=="close";
+    else if(op1=="negation")
+        return op2!="negation";
+    if((op1=="implication" || op1=="consequency") && op2 !="negation")
+        return true;
+    if(op1=="bimplication" && op2 !="negation" && !(op2=="implication" || op2=="consequency"))
+        return true;
+    if(op1 == "and" && op2!="bimplication" && op2 !="negation" && !(op2=="implication" || op2=="consequency"))
+        return true;
+    if(op1 == "or" && op2 != "and" && op2!="bimplication" && op2 !="negation" && !(op2=="implication" || op2=="consequency"))
+        return true;
+    return false;
+}
+
+var convert = function(o){
+    var symbol,d="";
+    var i1=0,i2=0;
+    var opstk = [];
+    while(symbol=o[i1++]){
+        if(isOperand(symbol)||isValue(symbol)){
+            d+=symbol;
+        }else{
+            while(opstk.length>0 && prcd(opstk[opstk.length-1],symbol)){
+                d+=opstk.pop();
+            }
+            if(symbol==")"){
+                opstk.pop();
+            }else
+                opstk.push(symbol);
+        }
+    }
+    while(opstk.length>0){
+        d+=opstk.pop();
+    }
+    return d;
+}
+var div_table = d3.select("body").append("div");
+var truthTable = function (e){
+    if(isSentence(e)){
+        var f = convert(e);
+        var truthTable = [];
+        var allTrue = true;
+        var allFalse = false;
+        var verdictSymbols = e.match(new RegExp("["+dictionary.verdict+"]","g"));
+        
+        if(verdictSymbols != null)
+            verdictSymbols = Array.removeRepetitions(verdictSymbols);    
+        else{
+            verdictSymbols = [];
+            allTrue = check(f);
+        }
+        var interpretations = Math.pow(2,verdictSymbols.length);
+        var truthTable = verdictSymbols.map(function(d,i){
+            var temp = {formul:d,value:[]};
+            for(var j=0;j<Math.pow(2,verdictSymbols.length);j++){
+                temp.value[j] = (Math.floor(j/Math.pow(2,i))%2)!=0;
+            }
+            return temp;
+        });
+        truthTable[truthTable.length] = {formul:"Z",value:[]};
+        if(interpretations>1)
+        for(var i=0;i<interpretations;i++){
+            var temp = check(f,truthTable,i);
+            truthTable[truthTable.length-1].value[i] = temp
+            allTrue = allTrue && temp;
+            allFalse = allFalse || temp;
+        }
+        truthTable.interpretations = interpretations;
+        truthTable.expression = e;
+        truthTable.postfix = f;
+        if(interpretations>1)
+            truthTable.type = allFalse?("Satisfatível e "+(allTrue?"Taltologia":"Contingência")):"Contradição";
+        else{
+            truthTable.type = allTrue?"Taltologia":"Contradição";
+            truthTable[0].value[0] = allTrue;
+        }
+        truthTable.print = function(){
+            if(d3.select("body").select("#table"))
+            div_table.text("");
+            var svg = div_table.attr("id","table").append("svg").attr("width",500).attr("height",(this.interpretations+4) * 20);
+            var horizontal = d3.scaleBand().rangeRound([0,this.length*20]).domain(this.map(function(d){return d.formul;})).padding(0.1);
+            var vertical = d3.scaleBand().rangeRound([0,this.interpretations * 10]).domain(this[0].value.map(function(d,i){return i;}));
+            var g = svg.append("g").attr("transform","translate(0,55)");
+            
+            g.append("g").call(d3.axisTop(horizontal));
+            g.selectAll(".columns").data(this).enter().append("g").attr("class","columns")
+                .attr("transform",function(d){return "translate("+horizontal(d.formul)+",0)";})
+            .selectAll(".row").data(function(d){return d.value}).enter()
+                .append("g").attr("class","row").attr("transform",function(d,i){return "translate(0,"+(vertical(i)*1.5+15)+")"}).append("text").text(function(d){return d?"1":"0"});
+            svg.append("text").attr("dy","1em").text("Expressão: "+this.expression+";   Interpretações: "+this.interpretations);
+            svg.append("text").attr("dy","2em").text("Tipo: "+this.type+";   Expressão pós fixada: "+this.postfix+";");
+        }
+
+        return truthTable;
+    }
+    return undefined;
+}
+
+var btnFunction = function(){
+    var str = prompt("Informe a expressao (exit - to exit)");
+    while(str != "exit" && str != null && str != ""){
+        console.log(str);
+        var table = truthTable(str);
+        if(table){
+            table.print();
+            str = "";
+        }else{
+            alert("sentença INVÁLIDA");
+            str = prompt("Informe a expressao (exit - to exit)");
+        }
+        
+    }
+}
+
+</script>
+</body>
