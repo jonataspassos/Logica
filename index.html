@@ -27,7 +27,7 @@ var dictionary={
         //value:""+this.vfalse+this.vtrue,// 0 - FALSE; 1 - TRUE;
         verdict:"a-zA-Z",
         connective:{
-            and:"\\^&",
+            and:"&\\^",
             or:"|",
             implication:">",
             consequency:"<",
@@ -291,9 +291,21 @@ var node = function(f,context,symbols,level,father){
         $(contextemp).attr(symbols[temp.level],false);
         temp.sonF = node(f,contextemp,symbols,temp.level+1,temp);
         temp.allResult = temp.sonF.allResult==temp.sonT.allResult?temp.sonT.allResult:undefined;
+        if(temp.sonT.naturalFormul!=undefined||temp.sonF.naturalFormul!=undefined){
+            temp.naturalFormul = (temp.sonT.naturalFormul!=undefined?temp.sonT.naturalFormul:"");
+            temp.naturalFormul += (temp.sonF.naturalFormul!=undefined?(temp.naturalFormul==""?"":" "+dictionary.connective.or.charAt(0)+" ")+
+                    temp.sonF.naturalFormul:"");
+        }
     }else{
         temp.allResult = temp.value;
         count_folha++;
+        if(temp.value == true){
+            
+            temp.naturalFormul = "";
+            for(var j=0;j<temp.level;j++){
+                temp.naturalFormul += (temp.naturalFormul==""?"":dictionary.connective.and.charAt(0)) + ($(temp.context).attr(symbols[j])?"":dictionary.connective.negation.charAt(0))+symbols[j];
+            }
+        }
     }
     temp.type = function(){
         return (this.sonT==undefined?"":this.allResult==true?"Satisfatível e Taltologia":(this.allResult==false?"Contradição":"Satisfatível e Contingência"));
@@ -341,6 +353,7 @@ var tree = function(e){
             div_table.text("");
             div_tree.append("p").text("Expressão: "+this.expression+";   Expressão pós fixada: "+this.postfix+";");
             div_tree.append("p").text("Tipo: "+this.type()+";   Nós: "+this.nnodes+";   Folhas: "+this.nFolhas+ ";");
+            div_tree.append("p").text("Formula Natural Disjuntiva: "+this.naturalFormul+";"); 
             var svg = div_tree.append("svg").attr("id","svg-tree");//
             var g = svg.append("g").attr("id","tree");
             var menor = 300;
@@ -416,7 +429,6 @@ var truthTable = function (e){
         var interpretations = Math.pow(2,verdictSymbols.length);
         var truthTable = {};
         truthTable.values=[];
-        console.log(verdictSymbols);
         for(var i=0;i<verdictSymbols.length;i++){
             for(var j=0;j<Math.pow(2,verdictSymbols.length);j++){
                 if(i==0)
@@ -425,12 +437,20 @@ var truthTable = function (e){
             }
         }
         verdictSymbols.push("Res");//truthTable.z = [];
+        truthTable.naturalFormul = "";
         if(interpretations>1)
         for(var i=0;i<interpretations;i++){
             var temp = check(f,truthTable.values[i]);
-            truthTable.values[i].Res = temp
+            truthTable.values[i].Res = temp;
             allTrue = allTrue && temp;
             allFalse = allFalse || temp;
+            if(temp){
+                var temp2="";
+                for(var j=0;j<verdictSymbols.length-1;j++){
+                    temp2 += (temp2==""?"":dictionary.connective.and.charAt(0)) + ($(truthTable.values[i]).attr(verdictSymbols[j])?"":dictionary.connective.negation.charAt(0))+verdictSymbols[j];
+                }
+                truthTable.naturalFormul += (truthTable.naturalFormul==""?"":" "+dictionary.connective.or.charAt(0)+" ") + temp2;
+            }
         }
         truthTable.interpretations = interpretations;
         truthTable.expression = e;
@@ -447,6 +467,7 @@ var truthTable = function (e){
             div_tree.text("");
             div_table.append("p").text("Expressão: "+this.expression+";   Interpretações: "+this.interpretations);
             div_table.append("p").text("Tipo: "+this.type+";   Expressão pós fixada: "+this.postfix+";");
+            div_table.append("p").text("Formula Natural Disjuntiva: "+this.naturalFormul+";"); 
             var svg = div_table.attr("id","table").append("svg").attr("width",verdictSymbols.length*21).attr("height",(this.interpretations+2) * 13);
             var horizontal = d3.scaleBand().rangeRound([0,verdictSymbols.length*20]).domain(verdictSymbols).padding(0.1);
             var vertical = d3.scaleBand().rangeRound([0,this.interpretations * 13]).domain(this.values.map(function(d,i){return i;}));
@@ -477,11 +498,9 @@ var btnFunction = function(){
         console.log(str);
         if(isSentence(str)){
             var op = prompt("1-Tabela Verdade; 2-Arvore semântica; 0-sair");
-            console.log(op);
             while(op&&op!=""&&op!="0"){
                 switch(op){
                     case "1":
-                        console.log("entrei");
                         var table = truthTable(str);
                         if(table){
                             table.print();
@@ -490,7 +509,6 @@ var btnFunction = function(){
                         op="";
                         break;
                     case "2":
-                        console.log("entrei");
                         var t = tree(str);
                         if(t){
                             t.print();
