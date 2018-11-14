@@ -17,13 +17,9 @@
 </style>
 <body>
 <script src="../Repository/d3.v5.min.js"></script>
-<script>
-    Array.removeRepetitions = function(vector){
-        return vector.filter(function(este, i) {
-            return vector.indexOf(este) == i;
-        });
-    }
-</script>
+<script src="../Repository/jquery-latest.min.js"></script>
+<script src="../Repository/JSUtil.js"></script>
+<script src="../Repository/ToolTip.js"></script>
 <script>
 var dictionary={
         vfalse:"0",
@@ -185,13 +181,13 @@ var operation = function(c){
 var apply = function(c,op1,op2){
     c = operation(c);
     switch(c){
-        case "and" : return op1 && op2;
-        case "or": return op1 || op2;
-        case "implication": return !op1 || op2;
-        case "consequency": return op1 || !op2;
-        case "bimplication": return !(op1 ^ op2);
-        case "negation": return !op1;
-        default: return false;
+        case "and" : return op1!=undefined?(op2!=undefined?op1 && op2:(op1==false?false:undefined)):(op2!=undefined?(op2==false?false:undefined):undefined);
+        case "or": return op1!=undefined?(op2!=undefined?op1 || op2:(op1==true?true:undefined)):(op2!=undefined?(op2==true?true:undefined):undefined);
+        case "implication": return op1!=undefined?(op2!=undefined?!op1 || op2:(op1==false?true:undefined)):(op2!=undefined?(op2==true?true:undefined):undefined);
+        case "consequency": return op1!=undefined?(op2!=undefined?op1 || !op2:(op1==true?true:undefined)):(op2!=undefined?(op2==false?true:undefined):undefined);
+        case "bimplication": return op1!=undefined&&op2!=undefined?!(op1 ^ op2):undefined;
+        case "negation": return op1==undefined?undefined:!op1;
+        default: return undefined;
     }
 }
 
@@ -205,13 +201,13 @@ var takeValue = function(truthTable,formul,interpretation){
     return truthTable[i].value[interpretation];
 }
 
-var check = function(e,truthTable,interpretation){
+var check = function(e,truthTable){
     var symbol;
     var i=0;
     var pilha_operandos = [];
     while(symbol=e[i++]){
         if(isOperand(symbol))
-            pilha_operandos.push(takeValue(truthTable,symbol,interpretation));
+            pilha_operandos.push($(truthTable).attr(symbol));
         else if(isValue(symbol)){
             pilha_operandos.push((symbol.replace(dictionaryRegex.vfalse,"")=="")?false:true);
         }
@@ -271,6 +267,137 @@ var convert = function(o){
     }
     return d;
 }
+var count = 1;
+var count_folha = 0;
+var niveis = 1;
+var nodesVector = [];
+var node = function(f,context,symbols,level,father){
+    var temp = {node:count++,context:context,level:level,father:father};
+    nodesVector.push(temp);
+    temp.value = check(f,temp.context);
+    temp.context.toString = function(){
+            var ret = "";
+            for(var i=0;i<temp.level;i++){
+                ret += symbols[i] + ": "+($(this).attr(symbols[i])?"T":"F") + "; ";
+            }
+            return ret.trim();
+    }
+    if(temp.value==undefined){
+        niveis = temp.level+1;
+        var contextemp = JSON.copyObject(context);
+        $(contextemp).attr(symbols[temp.level],true);
+        temp.sonT = node(f,contextemp,symbols,temp.level+1,temp);
+        contextemp = JSON.copyObject(context);
+        $(contextemp).attr(symbols[temp.level],false);
+        temp.sonF = node(f,contextemp,symbols,temp.level+1,temp);
+        temp.allResult = temp.sonF.allResult==temp.sonT.allResult?temp.sonT.allResult:undefined;
+    }else{
+        temp.allResult = temp.value;
+        count_folha++;
+    }
+    temp.type = function(){
+        return (this.sonT==undefined?"":this.allResult==true?"Satisfatível e Taltologia":(this.allResult==false?"Contradição":"Satisfatível e Contingência"));
+    }
+    temp.toString = function(){
+        var context = this.context.toString();
+        var type = this.type();
+        return ""+this.node+": nivel "+(this.level+1)+"\n"+
+                (this.value!=undefined?("Valor:"+(this.value?"True":"False")+";\n"):"")+
+                "Contexto: "+(context==""?"nada definido":context)+
+                (type==""?"":("\n"+type));
+                
+    }
+    return temp;
+}
+var div_tree = d3.select("body").append("div");
+var tree = function(e){
+    if(isSentence(e)){
+        var f = convert(e);
+        var allTrue = true;
+        var allFalse = false;
+        var verdictSymbols = e.match(new RegExp("["+dictionary.verdict+"]","g"));
+        
+        if(verdictSymbols != null)
+            verdictSymbols = Array.removeRepetitions(verdictSymbols);    
+        else{
+            verdictSymbols = [];
+            allTrue = check(f);
+        }
+        count = 1;
+        count_folha = 0;
+        niveis = 1;
+        nodesVector = [];
+        var ret = node(f,{},verdictSymbols,0);
+        ret.expression = e;
+        ret.postfix = f;
+        ret.typeString = ret.type();
+        ret.nnodes = count;
+        ret.maxLevels = niveis;
+        ret.nFolhas = count_folha;
+        ret.nodesVector = nodesVector;
+        ret.print = function(){
+            var a = this;
+            div_tree.text("");
+            div_table.text("");
+            div_tree.append("p").text("Expressão: "+this.expression+";   Expressão pós fixada: "+this.postfix+";");
+            div_tree.append("p").text("Tipo: "+this.type()+";   Nós: "+this.nnodes+";   Folhas: "+this.nFolhas+ ";");
+            var svg = div_tree.append("svg").attr("id","svg-tree");//
+            var g = svg.append("g").attr("id","tree");
+            var menor = 300;
+            var tempBase = 7*Math.pow(2,a.maxLevels);
+            
+            this.nodesVector = this.nodesVector.map(function(d,i){
+                if(i==0)
+                    d.x = tempBase/2,d.y = 0;
+                if(d.sonT!=undefined){
+                    var xlevel = tempBase/Math.pow(2,d.level+1);
+                    d.sonT.x = d.x-xlevel,
+                    d.sonF.x = d.x+xlevel,
+                    d.sonT.y = d.y+20,
+                    d.sonF.y = d.y+20;
+                    d.wires = [{x1:5,y1:15,x2:d.sonT.x-d.x+5,y2:d.sonT.y-d.y},{x1:5,y1:15,x2:d.sonF.x-d.x+5,y2:d.sonF.y-d.y}];
+                    menor = ((d.sonT.x<menor)?d.sonT.x:menor);
+                    menor = ((d.sonF.x<menor)?d.sonF.x:menor);
+                }
+                return d;
+            });
+            var nodes = g.selectAll(".node").data(this.nodesVector).enter()
+                .append("g").attr("class","node")
+                    .attr("transform",function(d){return "translate("+d.x+","+d.y+")"});
+
+            var rects = nodes.append("rect").attr("width",10).attr("height",15).attr("fill",function(d){return d.value==true?"#3F3":(d.value==false?"#F33":"#ccc")});
+            this.toolTip = new ToolTip({
+                name:"tooltip-tree",
+                parent:"#svg-tree",
+                text:"<this>"
+            });
+            var interactions = {mouseout:[],mousemove:[],mouseover:[],click:[function(element,data){alert(data)}]}
+            interactions.mouseover.push(function (element, data) {
+                element = d3.select(element);
+                if (element.attr("opacity") != 0)
+                    a.toolTip.show(data);
+            });
+            interactions.mousemove.push(function (element, data) {
+                a.toolTip.move();
+            });
+            interactions.mouseout.push(function (element, data) {
+                a.toolTip.hide();
+            });
+            d3.addEvents(rects,interactions);
+            nodes.selectAll(".wire").data(function(d){return d.wires==undefined?[]:d.wires}).enter()
+                .append("line")
+                    .attr("fill","none").attr("stroke","#000").attr("stroke-width","1")
+		            .attr("x1", function(d){return d.x1})
+		            .attr("y1", function(d){return d.y1})
+		            .attr("x2", function(d){return d.x2})
+		            .attr("y2", function(d){return d.y2});
+            var treeDimensions = document.getDimensions("#tree");
+            g.attr("transform","translate("+(-menor+15)+",0)")
+            svg.attr("width",Math.max(150,treeDimensions.w+25)).attr("height",treeDimensions.h+50);
+        }
+        return ret;
+    }
+}
 var div_table = d3.select("body").append("div");
 var truthTable = function (e){
     if(isSentence(e)){
@@ -287,18 +414,21 @@ var truthTable = function (e){
             allTrue = check(f);
         }
         var interpretations = Math.pow(2,verdictSymbols.length);
-        var truthTable = verdictSymbols.map(function(d,i){
-            var temp = {formul:d,value:[]};
+        var truthTable = {};
+        truthTable.values=[];
+        console.log(verdictSymbols);
+        for(var i=0;i<verdictSymbols.length;i++){
             for(var j=0;j<Math.pow(2,verdictSymbols.length);j++){
-                temp.value[j] = (Math.floor(j/Math.pow(2,i))%2)!=0;
+                if(i==0)
+                    truthTable.values[j]={};
+                $(truthTable.values[j]).attr(verdictSymbols[i],(Math.floor(j/Math.pow(2,i))%2)!=0);
             }
-            return temp;
-        });
-        truthTable[truthTable.length] = {formul:"Z",value:[]};
+        }
+        verdictSymbols.push("Res");//truthTable.z = [];
         if(interpretations>1)
         for(var i=0;i<interpretations;i++){
-            var temp = check(f,truthTable,i);
-            truthTable[truthTable.length-1].value[i] = temp
+            var temp = check(f,truthTable.values[i]);
+            truthTable.values[i].Res = temp
             allTrue = allTrue && temp;
             allFalse = allFalse || temp;
         }
@@ -312,20 +442,28 @@ var truthTable = function (e){
             truthTable[0].value[0] = allTrue;
         }
         truthTable.print = function(){
-            if(d3.select("body").select("#table"))
+            //if(d3.select("body").select("#table"))
             div_table.text("");
-            var svg = div_table.attr("id","table").append("svg").attr("width",500).attr("height",(this.interpretations+4) * 20);
-            var horizontal = d3.scaleBand().rangeRound([0,this.length*20]).domain(this.map(function(d){return d.formul;})).padding(0.1);
-            var vertical = d3.scaleBand().rangeRound([0,this.interpretations * 10]).domain(this[0].value.map(function(d,i){return i;}));
-            var g = svg.append("g").attr("transform","translate(0,55)");
+            div_tree.text("");
+            div_table.append("p").text("Expressão: "+this.expression+";   Interpretações: "+this.interpretations);
+            div_table.append("p").text("Tipo: "+this.type+";   Expressão pós fixada: "+this.postfix+";");
+            var svg = div_table.attr("id","table").append("svg").attr("width",verdictSymbols.length*21).attr("height",(this.interpretations+2) * 13);
+            var horizontal = d3.scaleBand().rangeRound([0,verdictSymbols.length*20]).domain(verdictSymbols).padding(0.1);
+            var vertical = d3.scaleBand().rangeRound([0,this.interpretations * 13]).domain(this.values.map(function(d,i){return i;}));
+
+            var g = svg.append("g").attr("transform","translate(0,20)");
             
             g.append("g").call(d3.axisTop(horizontal));
-            g.selectAll(".columns").data(this).enter().append("g").attr("class","columns")
-                .attr("transform",function(d){return "translate("+horizontal(d.formul)+",0)";})
-            .selectAll(".row").data(function(d){return d.value}).enter()
-                .append("g").attr("class","row").attr("transform",function(d,i){return "translate(0,"+(vertical(i)*1.5+15)+")"}).append("text").text(function(d){return d?"1":"0"});
-            svg.append("text").attr("dy","1em").text("Expressão: "+this.expression+";   Interpretações: "+this.interpretations);
-            svg.append("text").attr("dy","2em").text("Tipo: "+this.type+";   Expressão pós fixada: "+this.postfix+";");
+            var rows = g.attr("text-anchor", "middle").selectAll(".rows").data(this.values).enter()
+            rows.append("g").attr("class","rows")
+                .attr("transform",function(d,i){return "translate(0,"+(vertical(i)+15)+")"})
+            .selectAll(".column")
+                .data(function(d){return verdictSymbols.map(function(e){return $(d).attr(e)})})
+                .enter()
+                .append("g").attr("class","column")
+                    .attr("transform",function(d,i){return "translate("+(horizontal(verdictSymbols[i])+horizontal.bandwidth()/2)+",0)";})
+                    .append("text")
+                        .text(function(d){return d?"1":"0"});
         }
 
         return truthTable;
@@ -337,10 +475,33 @@ var btnFunction = function(){
     var str = prompt("Informe a expressao (exit - to exit)");
     while(str != "exit" && str != null && str != ""){
         console.log(str);
-        var table = truthTable(str);
-        if(table){
-            table.print();
-            str = "";
+        if(isSentence(str)){
+            var op = prompt("1-Tabela Verdade; 2-Arvore semântica; 0-sair");
+            console.log(op);
+            while(op&&op!=""&&op!="0"){
+                switch(op){
+                    case "1":
+                        console.log("entrei");
+                        var table = truthTable(str);
+                        if(table){
+                            table.print();
+                            str = "";
+                        }
+                        op="";
+                        break;
+                    case "2":
+                        console.log("entrei");
+                        var t = tree(str);
+                        if(t){
+                            t.print();
+                            str = "";
+                        }
+                        op="";
+                        break;
+                    default:alert("Opção inválida!");
+                        op = prompt("1-Tabela Verdade; 2-Arvore semântica; 0-sair");
+                }
+            }
         }else{
             alert("sentença INVÁLIDA");
             str = prompt("Informe a expressao (exit - to exit)");
@@ -348,6 +509,7 @@ var btnFunction = function(){
         
     }
 }
+//Comentando
 
 </script>
 </body>
