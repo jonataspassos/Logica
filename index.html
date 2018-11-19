@@ -268,7 +268,6 @@ var convert = function(o){
     return d;
 }
 var count = 1;
-var count_folha = 0;
 var niveis = 1;
 var nodesVector = [];
 var node = function(f,context,symbols,level,father){
@@ -296,11 +295,11 @@ var node = function(f,context,symbols,level,father){
             temp.naturalFormul += (temp.sonF.naturalFormul!=undefined?(temp.naturalFormul==""?"":" "+dictionary.connective.or.charAt(0)+" ")+
                     temp.sonF.naturalFormul:"");
         }
+        temp.folhas = temp.sonT.folhas + temp.sonF.folhas;
     }else{
         temp.allResult = temp.value;
-        count_folha++;
+        temp.folhas = 1;
         if(temp.value == true){
-            
             temp.naturalFormul = "";
             for(var j=0;j<temp.level;j++){
                 temp.naturalFormul += (temp.naturalFormul==""?"":dictionary.connective.and.charAt(0)) + ($(temp.context).attr(symbols[j])?"":dictionary.connective.negation.charAt(0))+symbols[j];
@@ -315,8 +314,7 @@ var node = function(f,context,symbols,level,father){
         var type = this.type();
         return ""+this.node+": nivel "+(this.level+1)+"\n"+
                 (this.value!=undefined?("Valor:"+(this.value?"True":"False")+";\n"):"")+
-                "Contexto: "+(context==""?"nada definido":context)+
-                (type==""?"":("\n"+type));
+                (context==""?(type==""?"":(type)):("Contexto: "+context));
                 
     }
     return temp;
@@ -345,20 +343,24 @@ var tree = function(e){
         ret.typeString = ret.type();
         ret.nnodes = count;
         ret.maxLevels = niveis;
-        ret.nFolhas = count_folha;
+        //ret.nFolhas = count_folha;
         ret.nodesVector = nodesVector;
+        ret.symbols = verdictSymbols;
         ret.print = function(){
             var a = this;
             div_tree.text("");
             div_table.text("");
             div_tree.append("p").text("Expressão: "+this.expression+";   Expressão pós fixada: "+this.postfix+";");
-            div_tree.append("p").text("Tipo: "+this.type()+";   Nós: "+this.nnodes+";   Folhas: "+this.nFolhas+ ";");
+            div_tree.append("p").text("Tipo: "+this.type()+";   Nós: "+this.nnodes+";   Folhas: "+this.folhas+ ";");
             div_tree.append("p").text("Formula Natural Disjuntiva: "+this.naturalFormul+";"); 
             var svg = div_tree.append("svg").attr("id","svg-tree");//
             var g = svg.append("g").attr("id","tree");
             var menor = 300;
             var tempBase = 7*Math.pow(2,a.maxLevels);
-            
+            console.log(this.symbols,this.maxLevels);
+            //this.symbols.unshift("");
+            var axis = d3.scaleBand().rangeRound([16,(this.maxLevels+1)*20-4]).domain(this.symbols);
+            svg.append("g").call(d3.axisLeft(axis)).attr("transform","translate(15,0)").select("path").remove();
             this.nodesVector = this.nodesVector.map(function(d,i){
                 if(i==0)
                     d.x = tempBase/2,d.y = 0;
@@ -405,7 +407,7 @@ var tree = function(e){
 		            .attr("x2", function(d){return d.x2})
 		            .attr("y2", function(d){return d.y2});
             var treeDimensions = document.getDimensions("#tree");
-            g.attr("transform","translate("+(-menor+15)+",0)")
+            g.attr("transform","translate("+(-menor+20)+",0)")
             svg.attr("width",Math.max(150,treeDimensions.w+25)).attr("height",treeDimensions.h+50);
         }
         return ret;
